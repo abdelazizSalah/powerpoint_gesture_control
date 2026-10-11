@@ -1,26 +1,38 @@
 # PowerPoint Gesture Control
 
-Control your PowerPoint presentation with a thumbs-up.
+Control your PowerPoint presentation with a gesture you choose from the **Gesture** dropdown:
+
+- **Thumbs-up:** thumb upward, with the other fingers folded.
+- **Shaka** (default): thumb and little finger extended, with the other three fingers folded.
+- **Victory (V sign):** index and middle fingers extended in a V, with the other fingers folded.
+
+Only the selected gesture triggers an action. Stop the camera before changing it,
+then start again. Your choice is kept when pausing and resuming.
 
 PowerPoint Gesture Control is a standalone Windows application that uses your
-webcam to recognize hand gestures and turn a deliberate thumbs-up into a next-slide
+webcam to recognize hand gestures and turn the selected pose into a next-slide
 command. Choose a presentation from your computer, start its slideshow, and
 advance it with either hand. An optional mouse-click mode controls animations and buttons.
 
 The application combines MediaPipe gesture recognition, OpenCV camera capture,
 and a Tkinter interface. Recognition runs locally on your computer.
+Thumbs-up and Victory use MediaPipe's pretrained gesture classifier.
+Shaka recognition uses joint angles and distance ratios from MediaPipe hand
+landmarks. Its displayed match score measures pose geometry rather than a trained
+classifier probability. Keep your palm visible to the camera.
 
 ## Features
 
 - **Local presentation picker:** choose the PowerPoint file you want to control.
-- **Thumbs-up to advance:** advance the selected deck directly, regardless of mouse position or which window has focus.
+- **Gesture selection:** choose Thumbs-up, Shaka, or Victory (V sign).
+- **Gesture to advance:** advance the selected deck directly, regardless of mouse position or which window has focus.
 - **Optional mouse click:** send one real left click at the current mouse position.
-- **Live camera preview:** see hand landmarks, the detected gesture, and its confidence.
+- **Live camera preview:** see hand landmarks, the detected gesture, and its match score.
 - **Repeat prevention:** hold the gesture without repeatedly clicking; lower your hand to rearm.
 - **Presentation targeting:** next-slide commands target only the selected show; mouse clicks require slideshow focus and the pointer on it.
 - **Keyboard controls:** pause/resume with F8 and stop the camera with F9.
 - **Detection-only mode:** test recognition without opening PowerPoint or sending clicks.
-- **Camera and confidence settings:** select your webcam and adjust the recognition threshold.
+- **Camera and threshold settings:** select your webcam and adjust the minimum pose match.
 - **Automatic setup:** the launcher creates a local Python environment, installs dependencies, and downloads the model.
 
 ## Requirements
@@ -58,13 +70,13 @@ Supported presentation formats: `.pptx`, `.ppsx`, `.ppt`, `.pps`, `.pptm`, and `
 2. Select your camera. Camera `0` is the default; try `1` or `2` if needed.
 3. Click **Start slideshow & camera**. The selected deck opens in PowerPoint. An
    existing slideshow for that presentation is reused when available.
-4. Leave **Thumbs-up action** set to **Next slide** (the default). You can keep
+4. Choose a pose from **Gesture**, then leave **Action** set to **Next slide** (the default). You can keep
    the controller preview or PowerPoint Presenter View focused. Mouse position does not matter.
 5. Lower your hand for at least **0.30 seconds** to arm recognition.
-6. Hold a clear thumbs-up for at least **0.35 seconds**. One next-slide command is sent.
-7. Lower your hand again before making the next thumbs-up.
+6. Hold the selected gesture clearly for at least **0.35 seconds**. One next-slide command is sent.
+7. Lower your hand again before making the next gesture.
 
-Holding a thumbs-up continuously produces one action. A minimum **one-second
+Holding the selected gesture continuously produces one action. A minimum **one-second
 interval** also separates accepted gestures. Either hand can be used.
 
 Next slide uses PowerPoint's `SlideShowView.Next` command to display the following
@@ -82,12 +94,13 @@ depends on the slide's animations, transitions, and interactive elements.
 | --- | --- |
 | **Browse...** | Choose a local presentation file. |
 | **Start slideshow & camera** | Start recognition and open the selected slideshow. |
-| **Thumbs-up action** | Choose Next slide (default) or Mouse click before starting. |
+| **Gesture** | Choose Thumbs-up, Shaka (default), or Victory (V sign) before starting. |
+| **Action** | Choose Next slide (default) or Mouse click before starting. |
 | **F8 / Pause actions** | Pause or resume gesture actions. |
 | **F9 / Stop** | Stop recognition and release the camera. |
 | **Detection only (no actions)** | Test recognition without controlling PowerPoint. |
 | **Camera** | Select the webcam by its device number. |
-| **Confidence** | Set the minimum thumbs-up confidence; default `0.75`, allowed range `0.50`–`0.99`. |
+| **Match threshold** | Set the minimum model confidence (Thumbs-up/Victory) or pose match score (Shaka); default `0.75`, allowed range `0.50`–`0.99`. |
 
 F8 and F9 work while PowerPoint has focus. After resuming, lower your hand before
 making another gesture. Stopping the controller leaves your presentation open.
@@ -103,9 +116,9 @@ Enable **Detection only (no actions)** before starting. A presentation file is
 optional in this mode. The preview shows the detected gesture and the count of
 accepted test gestures.
 
-Keep your entire hand visible with even lighting. Start with the default confidence
+Keep your entire hand visible with even lighting. Start with the default match threshold
 of `0.75`. Raise it if recognition triggers too easily, or lower it slightly if a
-clear thumbs-up is missed. Stop the camera before changing settings.
+clear selected gesture is missed. Stop the camera before changing settings.
 
 ## Troubleshooting
 
@@ -113,9 +126,9 @@ clear thumbs-up is missed. Stop the camera before changing settings.
 | --- | --- |
 | Python cannot be found | Install 64-bit Python with Tkinter and make sure `python --version` works in PowerShell. |
 | Camera will not open | Close other camera apps, try another camera number, and enable desktop-app camera access in Windows Settings. |
-| Hand landmarks appear but no action occurs | Landmarks show hand tracking, not an accepted thumbs-up. Check the gesture name/confidence, lower your hand to arm, then hold a thumbs-up for 0.35 seconds. Check that detection-only mode and pause are off. |
-| A thumbs-up is accepted but no slide advances | Choose Next slide before starting and check the status message. In Mouse click mode, focus the slideshow and put the pointer on it; a click may run an animation instead of changing slides. |
-| Recognition is inconsistent | Improve lighting, keep the whole hand in view, and adjust the confidence threshold. |
+| Hand landmarks appear but no action occurs | Check which Gesture is selected, the detected name and score, then lower your hand to arm and hold that pose for 0.35 seconds. Check that detection-only mode and pause are off. |
+| A gesture is accepted but no slide advances | Choose Next slide before starting and check the status message. In Mouse click mode, focus the slideshow and put the pointer on it; a click may run an animation instead of changing slides. |
+| Recognition is inconsistent | Improve lighting, keep the whole hand in view, and adjust the match threshold. |
 | PowerPoint cannot open the file | Confirm PowerPoint desktop is installed and resolve any password or Protected View prompt in PowerPoint. |
 | Windows blocks clicks | Run PowerPoint and the controller at the same permission level; use normal non-administrator mode for both. |
 | The slideshow has ended | Stop the controller, then start again to reopen the slideshow. |
@@ -155,7 +168,7 @@ Run the test suite:
 ```
 
 The suite tests gesture filtering, application action dispatch, and presentation
-targeting, plus **two optional vision tests** using the real recognition model.
+targeting, plus optional vision tests using the real recognition model.
 These tests use simulated camera input and mocked mouse operations; they do not
 open your webcam or send desktop clicks.
 

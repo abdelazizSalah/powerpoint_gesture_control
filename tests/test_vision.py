@@ -38,7 +38,16 @@ class VisionTests(unittest.TestCase):
                 self.assertEqual(gesture, expected)
                 self.assertGreaterEqual(score, 0.75)
 
-    def test_real_video_pipeline_two_held_gestures(self):
+    def test_real_video_pipeline_held_thumbs_do_not_trigger(self):
+        self.check_video_pipeline("Shaka", 0)
+
+    def test_real_video_pipeline_selected_thumbs_trigger_twice(self):
+        self.check_video_pipeline("Thumb_Up", 2)
+
+    def test_real_video_pipeline_thumbs_do_not_trigger_selected_victory(self):
+        self.check_video_pipeline("Victory", 0)
+
+    def check_video_pipeline(self, target_gesture, expected_pulses):
         import cv2
         import numpy as np
         from camera import CameraWorker
@@ -46,7 +55,7 @@ class VisionTests(unittest.TestCase):
         thumb = cv2.imread(str(TOOL / "_test_artifacts" / "thumbs_up.jpg"))
         blank = np.zeros_like(thumb)
         source_frames = [blank] * 16 + [thumb] * 35 + [blank] * 16 + [thumb] * 35
-        worker = CameraWorker(0, 0.75)
+        worker = CameraWorker(0, 0.75, target_gesture)
 
         class FakeCamera:
             index = 0
@@ -94,4 +103,4 @@ class VisionTests(unittest.TestCase):
         self.assertFalse(worker.is_alive())
         self.assertTrue(fake_camera.released)
         self.assertEqual(errors, [])
-        self.assertEqual(pulses, 2, "Each separate held thumbs-up must produce exactly one gesture pulse")
+        self.assertEqual(pulses, expected_pulses, "Only the selected gesture may trigger the controller")

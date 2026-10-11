@@ -1,4 +1,4 @@
-"""Standalone Windows GUI: pick a deck, then control it with thumbs-up gestures."""
+"""Standalone Windows GUI: pick a deck and the gesture used to control it."""
 
 import ctypes
 from pathlib import Path
@@ -11,6 +11,7 @@ from tkinter import filedialog, messagebox, ttk
 from PIL import Image, ImageTk
 
 from camera import CameraWorker
+from gesture import DEFAULT_GESTURE, GESTURE_CHOICES, GESTURE_HINTS, gesture_label
 from powerpoint import PowerPointController
 
 
@@ -32,12 +33,13 @@ class GestureApp:
         self.close_started = None
         self.click_count = 0
         self.session_action = ACTION_NEXT_SLIDE
+        self.session_gesture = DEFAULT_GESTURE
         self.hotkey_states = {0x77: False, 0x78: False}  # F8, F9
         self.user32 = ctypes.WinDLL("user32", use_last_error=True)
         self.user32.GetAsyncKeyState.argtypes = [ctypes.c_int]
         self.user32.GetAsyncKeyState.restype = ctypes.c_short
 
-        root.title("Thumbs-up PowerPoint Controller")
+        root.title("PowerPoint Gesture Controller")
         root.geometry("760x830")
         root.minsize(700, 760)
         root.protocol("WM_DELETE_WINDOW", self.close)
@@ -49,7 +51,7 @@ class GestureApp:
 
         content = ttk.Frame(root, padding=20)
         content.pack(fill="both", expand=True)
-        ttk.Label(content, text="Thumbs-up to advance", style="Title.TLabel").pack(anchor="w")
+        ttk.Label(content, text="Choose your gesture to advance", style="Title.TLabel").pack(anchor="w")
         ttk.Label(content, text="Choose a presentation, start its slideshow, and use your webcam.").pack(anchor="w", pady=(4, 14))
 
         files = ttk.LabelFrame(content, text="PowerPoint presentation", padding=10)
@@ -66,7 +68,7 @@ class GestureApp:
         self.camera = tk.StringVar(value="0")
         self.camera_box = ttk.Spinbox(options, from_=0, to=9, textvariable=self.camera, width=4)
         self.camera_box.pack(side="left", padx=(6, 20))
-        ttk.Label(options, text="Confidence:").pack(side="left")
+        ttk.Label(options, text="Match threshold:").pack(side="left")
         self.confidence = tk.StringVar(value="0.75")
         self.confidence_box = ttk.Spinbox(options, from_=0.5, to=0.99, increment=0.05, textvariable=self.confidence, width=5)
         self.confidence_box.pack(side="left", padx=(6, 20))
@@ -74,9 +76,22 @@ class GestureApp:
         self.test_checkbox = ttk.Checkbutton(options, text="Detection only (no actions)", variable=self.test_only)
         self.test_checkbox.pack(side="left")
 
+        gestures = ttk.Frame(content)
+        gestures.pack(fill="x", pady=(0, 12))
+        ttk.Label(gestures, text="Gesture:").pack(side="left")
+        self.gesture_choice = tk.StringVar(value=gesture_label(DEFAULT_GESTURE))
+        self.gesture_box = ttk.Combobox(
+            gestures, textvariable=self.gesture_choice, values=tuple(GESTURE_CHOICES),
+            state="readonly", width=18,
+        )
+        self.gesture_box.pack(side="left", padx=(8, 12))
+        self.gesture_hint = tk.StringVar(value=GESTURE_HINTS[DEFAULT_GESTURE])
+        ttk.Label(gestures, textvariable=self.gesture_hint, wraplength=350).pack(side="left")
+        self.gesture_box.bind("<<ComboboxSelected>>", self.update_gesture_help)
+
         actions = ttk.Frame(content)
         actions.pack(fill="x", pady=(0, 12))
-        ttk.Label(actions, text="Thumbs-up action:").pack(side="left")
+        ttk.Label(actions, text="Action:").pack(side="left")
         self.action = tk.StringVar(value=ACTION_NEXT_SLIDE)
         self.action_box = ttk.Combobox(
             actions, textvariable=self.action, values=(ACTION_NEXT_SLIDE, ACTION_MOUSE_CLICK),
@@ -107,7 +122,7 @@ class GestureApp:
         ttk.Label(content, textvariable=self.status, style="Status.TLabel", wraplength=650).pack(before=preview_frame, anchor="w", fill="x", pady=(0, 8))
         ttk.Label(
             content,
-            text="Lower your hand first. Hold a thumbs-up for 0.35 seconds, then lower it again.\n"
+            text="Lower your hand first. Hold the selected gesture for 0.35 seconds, then lower it again.\n"
                  "Next slide advances the selected deck without needing mouse focus.\n"
                  "Mouse click requires the slide focused and the pointer on it. F8 pauses; F9 stops.",
             wraplength=650,
@@ -115,6 +130,9 @@ class GestureApp:
         self.root.after(30, self.poll)
         if pick_on_start:
             self.root.after(150, self.browse)
+
+    def update_gesture_help(self, event=None):
+        self.gesture_hint.set(GESTURE_HINTS[GESTURE_CHOICES[self.gesture_choice.get()]])
 
     def browse(self):
         path = filedialog.askopenfilename(
@@ -131,6 +149,7 @@ class GestureApp:
         for widget in (self.start_button, self.browse_button, self.path_entry, self.camera_box, self.confidence_box, self.test_checkbox):
             widget.configure(state=state)
         self.action_box.configure(state="disabled" if busy else "readonly")
+        self.gesture_box.configure(state="disabled" if busy else "readonly")
         self.stop_button.configure(state="normal" if busy else "disabled")
         self.pause_button.configure(state="normal" if self.running else "disabled")
 
@@ -149,10 +168,11 @@ class GestureApp:
         try:
             camera_index = int(self.camera.get())
             confidence = float(self.confidence.get())
+            self.session_gesture = GESTURE_CHOICES[self.gesture_choice.get()]
             if camera_index < 0 or not 0.5 <= confidence <= 0.99:
                 raise ValueError
-        except ValueError:
-            messagebox.showerror("Invalid settings", "Use a non-negative camera number and confidence from 0.50 to 0.99.", parent=self.root)
+        except (ValueError, KeyError):
+            messagebox.showerror("Invalid settings", "Use a non-negative camera number and match threshold from 0.50 to 0.99.", parent=self.root)
             return
         self.paused = False
         self.running = False
@@ -160,7 +180,7 @@ class GestureApp:
         self.count_text.set("Actions sent: 0")
         self.pause_button.configure(text="Pause actions (F8)")
         self.status.set("Starting the camera and gesture recognizer...")
-        self.worker = CameraWorker(camera_index, confidence)
+        self.worker = CameraWorker(camera_index, confidence, self.session_gesture)
         self.set_controls(True)
         self.worker.start()
 
@@ -181,9 +201,9 @@ class GestureApp:
         self.worker.resume()
         self.set_controls(True)
         if self.test_session:
-            self.status.set("Detection only: lower your hand, then show a thumbs-up. No actions will be sent.")
+            self.status.set(f"Detection only: lower your hand, then show {gesture_label(self.session_gesture)}. No actions will be sent.")
         elif self.session_action == ACTION_NEXT_SLIDE:
-            self.status.set("Ready for next slide. Lower your hand to arm, then hold a thumbs-up. Mouse position does not matter.")
+            self.status.set(f"Ready for next slide. Lower your hand to arm, then hold {gesture_label(self.session_gesture)}. Mouse position does not matter.")
         else:
             self.status.set("Ready. Keep the slideshow active and the mouse pointer on the slide. Lower your hand to arm.")
 
@@ -199,7 +219,7 @@ class GestureApp:
             self.enabled_since = time.monotonic()
             self.worker.resume()
             self.pause_button.configure(text="Pause actions (F8)")
-            self.status.set("Resumed. Lower your hand before the next thumbs-up.")
+            self.status.set(f"Resumed. Lower your hand before showing {gesture_label(self.session_gesture)} again.")
             if self.controller is not None:
                 try:
                     self.controller.activate()
@@ -227,7 +247,7 @@ class GestureApp:
         if self.test_session:
             self.click_count += 1
             self.count_text.set(f"Test gestures: {self.click_count} (no actions sent)")
-            self.status.set("Thumbs-up detected. Lower your hand before testing again.")
+            self.status.set(f"{gesture_label(self.session_gesture)} detected. Lower your hand before testing again.")
         elif self.controller is not None:
             if self.session_action == ACTION_NEXT_SLIDE:
                 clicked, explanation = self.controller.try_next_slide()
@@ -278,11 +298,12 @@ class GestureApp:
                     state = "Paused"
                 elif not armed:
                     state = "Lower your hand to arm/rearm"
-                elif name == "Thumb_Up" and score >= worker.gate.confidence:
-                    state = "Hold thumbs-up steady for 0.35 seconds"
+                elif name == worker.gate.target_gesture and score >= worker.gate.confidence:
+                    state = "Hold the selected gesture steady for 0.35 seconds"
                 else:
-                    state = "Ready for thumbs-up"
-                self.detection.set(f"Gesture: {name.replace('_', ' ')}  |  Confidence: {score:.0%}  |  {state}")
+                    state = f"Ready for {gesture_label(worker.gate.target_gesture)}"
+                score_label = "Match score" if name == "Shaka" else "Model confidence"
+                self.detection.set(f"Gesture: {gesture_label(name)}  |  {score_label}: {score:.0%}  |  {state}")
             except Empty:
                 pass
             if not worker.is_alive():

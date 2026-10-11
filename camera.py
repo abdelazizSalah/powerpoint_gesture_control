@@ -4,7 +4,7 @@ from queue import Empty, Queue
 from threading import Event, Thread
 import time
 
-from gesture import GestureGate, best_gesture
+from gesture import DEFAULT_GESTURE, GestureGate, best_gesture
 from model import ensure_model
 
 
@@ -16,10 +16,10 @@ CONNECTIONS = (
 
 
 class CameraWorker(Thread):
-    def __init__(self, camera_index, confidence):
+    def __init__(self, camera_index, confidence, target_gesture=DEFAULT_GESTURE):
         super().__init__(daemon=True, name="gesture-camera")
         self.camera_index = camera_index
-        self.gate = GestureGate(confidence=confidence)
+        self.gate = GestureGate(confidence=confidence, target_gesture=target_gesture)
         self.enabled = Event()
         self.reset_requested = Event()
         self.stopping = Event()
@@ -37,6 +37,10 @@ class CameraWorker(Thread):
     def resume(self):
         self.reset_requested.set()
         self.enabled.set()
+
+    def reset_gate(self):
+        self.gate = GestureGate(confidence=self.gate.confidence, target_gesture=self.gate.target_gesture)
+        self.reset_requested.clear()
 
     def run(self):
         capture = None
@@ -80,10 +84,9 @@ class CameraWorker(Thread):
                     result = recognizer.recognize_for_video(
                         mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb), timestamp
                     )
-                    name, score = best_gesture(result)
+                    name, score = best_gesture(result, self.gate.target_gesture)
                     if self.reset_requested.is_set():
-                        self.gate = GestureGate(confidence=self.gate.confidence)
-                        self.reset_requested.clear()
+                        self.reset_gate()
                     # Use capture time, so an old frame cannot produce a fresh click.
                     if self.gate.update(name, score, captured_at, self.enabled.is_set()):
                         self.events.put(("gesture", captured_at))

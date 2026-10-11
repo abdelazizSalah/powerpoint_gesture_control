@@ -224,7 +224,7 @@ class PowerPointController:
             if problem:
                 return False, problem
             self.show.View.Next()
-            return True, "Next slide command sent. Lower your hand before the next thumbs-up."
+            return True, "Next slide command sent. Lower your hand before the next gesture."
         except Exception as error:
             return False, f"Next slide skipped: {error}"
 
@@ -242,6 +242,6 @@ class PowerPointController:
             if self.desktop.foreground() != self.hwnd:
                 return False, "Click skipped: slideshow lost focus."
             self.desktop.left_click()
-            return True, "Left click sent. Lower your hand before the next thumbs-up."
+            return True, "Left click sent. Lower your hand before the next gesture."
         except Exception as error:
             return False, f"Click skipped: {error}"

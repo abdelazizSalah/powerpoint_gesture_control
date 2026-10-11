@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from gesture import GestureGate, best_gesture
+from gesture import GESTURE_CHOICES, GestureGate, best_gesture
 from powerpoint import PowerPointController, WindowsDesktop
 
 
@@ -24,64 +24,110 @@ class GateTests(unittest.TestCase):
             self.now = round(self.now + 0.1, 5)
         return pulses
 
-    def test_starting_with_held_thumb_does_not_click(self):
-        self.assertEqual(self.frames("Thumb_Up", 30), 0)
+    def test_starting_with_held_shaka_does_not_click(self):
+        self.assertEqual(self.frames("Shaka", 30), 0)
         self.frames("Open_Palm", 5)
-        self.assertEqual(self.frames("Thumb_Up", 6), 1)
+        self.assertEqual(self.frames("Shaka", 6), 1)
 
-    def test_holding_thumb_produces_exactly_one_click(self):
+    def test_holding_shaka_produces_exactly_one_click(self):
         self.frames("No hand", 5)
-        self.assertEqual(self.frames("Thumb_Up", 100), 1)
+        self.assertEqual(self.frames("Shaka", 100), 1)
 
     def test_brief_gesture_is_ignored(self):
         self.frames("No hand", 5)
-        self.assertEqual(self.frames("Thumb_Up", 3), 0)
+        self.assertEqual(self.frames("Shaka", 3), 0)
         self.frames("Open_Palm", 5)
-        self.assertEqual(self.frames("Thumb_Up", 6), 1)
+        self.assertEqual(self.frames("Shaka", 6), 1)
 
     def test_low_confidence_never_clicks(self):
         self.frames("No hand", 5)
-        self.assertEqual(self.frames("Thumb_Up", 30, score=0.6), 0)
+        self.assertEqual(self.frames("Shaka", 30, score=0.6), 0)
 
     def test_detection_flicker_does_not_rearm(self):
         self.frames("No hand", 5)
-        self.assertEqual(self.frames("Thumb_Up", 6), 1)
+        self.assertEqual(self.frames("Shaka", 6), 1)
         self.frames("No hand", 2)
-        self.assertEqual(self.frames("Thumb_Up", 30), 0)
+        self.assertEqual(self.frames("Shaka", 30), 0)
         self.frames("Open_Palm", 5)
-        self.assertEqual(self.frames("Thumb_Up", 6), 1)
+        self.assertEqual(self.frames("Shaka", 6), 1)
 
     def test_pause_and_resume_requires_release(self):
         self.frames("No hand", 5)
-        self.frames("Thumb_Up", 2)
-        self.frames("Thumb_Up", 1, enabled=False)
-        self.assertEqual(self.frames("Thumb_Up", 20), 0)
+        self.frames("Shaka", 2)
+        self.frames("Shaka", 1, enabled=False)
+        self.assertEqual(self.frames("Shaka", 20), 0)
         self.frames("No hand", 5)
-        self.assertEqual(self.frames("Thumb_Up", 6), 1)
+        self.assertEqual(self.frames("Shaka", 6), 1)
 
     def test_camera_stall_cannot_complete_pending_hold(self):
         self.frames("No hand", 5)
-        self.frames("Thumb_Up", 2)
+        self.frames("Shaka", 2)
         self.now += 5
-        self.assertEqual(self.frames("Thumb_Up", 20), 0)
+        self.assertEqual(self.frames("Shaka", 20), 0)
         self.frames("No hand", 5)
-        self.assertEqual(self.frames("Thumb_Up", 6), 1)
+        self.assertEqual(self.frames("Shaka", 6), 1)
 
     def test_cooldown_delays_second_click(self):
         self.gate = GestureGate(hold_seconds=0.1, release_seconds=0.1, cooldown_seconds=1)
         self.frames("No hand", 3)
-        self.assertEqual(self.frames("Thumb_Up", 3), 1)
+        self.assertEqual(self.frames("Shaka", 3), 1)
         self.frames("No hand", 3)
-        self.assertEqual(self.frames("Thumb_Up", 3), 0)
-        self.assertEqual(self.frames("Thumb_Up", 10), 1)
+        self.assertEqual(self.frames("Shaka", 3), 0)
+        self.assertEqual(self.frames("Shaka", 10), 1)
 
-    def test_lower_ranked_thumb_is_not_accepted(self):
+    def test_lower_ranked_model_gesture_is_not_accepted(self):
         category = lambda name, score: SimpleNamespace(category_name=name, score=score)
         result = SimpleNamespace(gestures=[[category("Open_Palm", 0.9), category("Thumb_Up", 0.8)]])
         self.assertEqual(best_gesture(result), ("Open_Palm", 0.9))
         result.gestures.append([category("Thumb_Up", 0.85)])
-        self.assertEqual(best_gesture(result), ("Thumb_Up", 0.85))
+        self.assertEqual(best_gesture(result), ("Open_Palm", 0.9))
         self.assertEqual(best_gesture(SimpleNamespace(gestures=[])), ("No hand", 0))
+
+    def test_each_selected_gesture_triggers_once_and_ignores_other_options(self):
+        for target in GESTURE_CHOICES.values():
+            with self.subTest(target=target):
+                self.gate = GestureGate(target_gesture=target)
+                self.now = 0.0
+                self.frames("No hand", 5)
+                for other in GESTURE_CHOICES.values():
+                    if other != target:
+                        self.assertEqual(self.frames(other, 20), 0)
+                self.assertEqual(self.frames(target, 30), 1)
+                self.frames("No hand", 5)
+                self.assertEqual(self.frames(target, 30), 1)
+
+    def test_selected_model_gesture_on_second_hand_is_prioritized(self):
+        for target in ("Thumb_Up", "Victory"):
+            result = SimpleNamespace(gestures=[
+                [SimpleNamespace(category_name="Open_Palm", score=0.99)],
+                [SimpleNamespace(category_name=target, score=0.85)],
+            ])
+            self.assertEqual(best_gesture(result, target), (target, 0.85))
+
+    def test_lower_ranked_selected_model_class_is_rejected(self):
+        for target in ("Thumb_Up", "Victory"):
+            result = SimpleNamespace(gestures=[[
+                SimpleNamespace(category_name="Open_Palm", score=0.99),
+                SimpleNamespace(category_name=target, score=0.85),
+            ]])
+            self.assertEqual(best_gesture(result, target), ("Open_Palm", 0.99))
+
+    def test_invalid_gesture_is_rejected(self):
+        with self.assertRaises(ValueError):
+            GestureGate(target_gesture="Unknown")
+
+    def test_camera_resume_reset_preserves_selected_gesture(self):
+        from camera import CameraWorker
+        for target in GESTURE_CHOICES.values():
+            worker = CameraWorker(0, 0.8, target)
+            worker.gate.armed = True
+            worker.pause()
+            worker.resume()
+            worker.reset_gate()
+            self.assertEqual(worker.gate.target_gesture, target)
+            self.assertEqual(worker.gate.confidence, 0.8)
+            self.assertFalse(worker.gate.armed)
+            self.assertFalse(worker.reset_requested.is_set())
 
 
 class TargetTests(unittest.TestCase):
