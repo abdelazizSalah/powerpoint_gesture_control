@@ -1,0 +1,1 @@
+Control a selected PowerPoint slideshow with webcam hand gestures. A standalone Windows app that turns a thumbs-up into a mouse click using MediaPipe and OpenCV.
