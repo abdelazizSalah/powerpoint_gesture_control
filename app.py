@@ -15,6 +15,8 @@ from powerpoint import PowerPointController
 
 
 PRESENTATION_EXTENSIONS = {".pptx", ".ppsx", ".ppt", ".pps", ".pptm", ".ppsm"}
+ACTION_NEXT_SLIDE = "Next slide"
+ACTION_MOUSE_CLICK = "Mouse click"
 
 
 class GestureApp:
@@ -29,6 +31,7 @@ class GestureApp:
         self.closing = False
         self.close_started = None
         self.click_count = 0
+        self.session_action = ACTION_NEXT_SLIDE
         self.hotkey_states = {0x77: False, 0x78: False}  # F8, F9
         self.user32 = ctypes.WinDLL("user32", use_last_error=True)
         self.user32.GetAsyncKeyState.argtypes = [ctypes.c_int]
@@ -46,7 +49,7 @@ class GestureApp:
 
         content = ttk.Frame(root, padding=20)
         content.pack(fill="both", expand=True)
-        ttk.Label(content, text="Thumbs-up to click", style="Title.TLabel").pack(anchor="w")
+        ttk.Label(content, text="Thumbs-up to advance", style="Title.TLabel").pack(anchor="w")
         ttk.Label(content, text="Choose a presentation, start its slideshow, and use your webcam.").pack(anchor="w", pady=(4, 14))
 
         files = ttk.LabelFrame(content, text="PowerPoint presentation", padding=10)
@@ -68,14 +71,25 @@ class GestureApp:
         self.confidence_box = ttk.Spinbox(options, from_=0.5, to=0.99, increment=0.05, textvariable=self.confidence, width=5)
         self.confidence_box.pack(side="left", padx=(6, 20))
         self.test_only = tk.BooleanVar(value=False)
-        self.test_checkbox = ttk.Checkbutton(options, text="Detection only (no clicks)", variable=self.test_only)
+        self.test_checkbox = ttk.Checkbutton(options, text="Detection only (no actions)", variable=self.test_only)
         self.test_checkbox.pack(side="left")
+
+        actions = ttk.Frame(content)
+        actions.pack(fill="x", pady=(0, 12))
+        ttk.Label(actions, text="Thumbs-up action:").pack(side="left")
+        self.action = tk.StringVar(value=ACTION_NEXT_SLIDE)
+        self.action_box = ttk.Combobox(
+            actions, textvariable=self.action, values=(ACTION_NEXT_SLIDE, ACTION_MOUSE_CLICK),
+            state="readonly", width=14,
+        )
+        self.action_box.pack(side="left", padx=(8, 12))
+        ttk.Label(actions, text="Next slide works with the preview or Presenter View focused.", wraplength=390).pack(side="left")
 
         buttons = ttk.Frame(content)
         buttons.pack(fill="x", pady=(0, 12))
         self.start_button = ttk.Button(buttons, text="Start slideshow & camera", command=self.start)
         self.start_button.pack(side="left")
-        self.pause_button = ttk.Button(buttons, text="Pause clicks (F8)", command=self.toggle_pause, state="disabled")
+        self.pause_button = ttk.Button(buttons, text="Pause actions (F8)", command=self.toggle_pause, state="disabled")
         self.pause_button.pack(side="left", padx=8)
         self.stop_button = ttk.Button(buttons, text="Stop (F9)", command=self.stop, state="disabled")
         self.stop_button.pack(side="left")
@@ -87,15 +101,15 @@ class GestureApp:
         self.preview.pack(fill="both", expand=True)
         self.detection = tk.StringVar(value="Gesture: waiting for camera")
         ttk.Label(content, textvariable=self.detection).pack(anchor="w")
-        self.count_text = tk.StringVar(value="Clicks sent: 0")
+        self.count_text = tk.StringVar(value="Actions sent: 0")
         ttk.Label(content, textvariable=self.count_text).pack(anchor="w", pady=(4, 8))
         self.status = tk.StringVar(value="Select a PowerPoint file to begin.")
         ttk.Label(content, textvariable=self.status, style="Status.TLabel", wraplength=650).pack(before=preview_frame, anchor="w", fill="x", pady=(0, 8))
         ttk.Label(
             content,
             text="Lower your hand first. Hold a thumbs-up for 0.35 seconds, then lower it again.\n"
-                 "Clicks use your current mouse position. Keep the selected slideshow active\n"
-                 "and the mouse pointer on the slide. F8 pauses/resumes; F9 stops the camera.",
+                 "Next slide advances the selected deck without needing mouse focus.\n"
+                 "Mouse click requires the slide focused and the pointer on it. F8 pauses; F9 stops.",
             wraplength=650,
         ).pack(before=preview_frame, anchor="w", pady=(0, 12))
         self.root.after(30, self.poll)
@@ -116,6 +130,7 @@ class GestureApp:
         state = "disabled" if busy else "normal"
         for widget in (self.start_button, self.browse_button, self.path_entry, self.camera_box, self.confidence_box, self.test_checkbox):
             widget.configure(state=state)
+        self.action_box.configure(state="disabled" if busy else "readonly")
         self.stop_button.configure(state="normal" if busy else "disabled")
         self.pause_button.configure(state="normal" if self.running else "disabled")
 
@@ -123,6 +138,7 @@ class GestureApp:
         if self.worker is not None:
             return
         self.test_session = self.test_only.get()
+        self.session_action = self.action.get()
         self.selected_path = Path(self.path.get()).expanduser()
         if not self.test_session and (
             not self.path.get() or not self.selected_path.is_file()
@@ -141,8 +157,8 @@ class GestureApp:
         self.paused = False
         self.running = False
         self.click_count = 0
-        self.count_text.set("Clicks sent: 0")
-        self.pause_button.configure(text="Pause clicks (F8)")
+        self.count_text.set("Actions sent: 0")
+        self.pause_button.configure(text="Pause actions (F8)")
         self.status.set("Starting the camera and gesture recognizer...")
         self.worker = CameraWorker(camera_index, confidence)
         self.set_controls(True)
@@ -165,7 +181,9 @@ class GestureApp:
         self.worker.resume()
         self.set_controls(True)
         if self.test_session:
-            self.status.set("Detection only: lower your hand, then show a thumbs-up. No clicks will be sent.")
+            self.status.set("Detection only: lower your hand, then show a thumbs-up. No actions will be sent.")
+        elif self.session_action == ACTION_NEXT_SLIDE:
+            self.status.set("Ready for next slide. Lower your hand to arm, then hold a thumbs-up. Mouse position does not matter.")
         else:
             self.status.set("Ready. Keep the slideshow active and the mouse pointer on the slide. Lower your hand to arm.")
 
@@ -175,12 +193,12 @@ class GestureApp:
         self.paused = not self.paused
         if self.paused:
             self.worker.pause()
-            self.pause_button.configure(text="Resume clicks (F8)")
+            self.pause_button.configure(text="Resume actions (F8)")
             self.status.set("Paused. Press F8 to resume.")
         else:
             self.enabled_since = time.monotonic()
             self.worker.resume()
-            self.pause_button.configure(text="Pause clicks (F8)")
+            self.pause_button.configure(text="Pause actions (F8)")
             self.status.set("Resumed. Lower your hand before the next thumbs-up.")
             if self.controller is not None:
                 try:
@@ -200,19 +218,26 @@ class GestureApp:
     def handle_gesture(self, captured_at):
         if (
             not self.running or self.paused or self.worker.stopping.is_set()
-            or captured_at <= self.enabled_since or time.monotonic() - captured_at > 0.5
+            or captured_at <= self.enabled_since
         ):
+            return
+        if time.monotonic() - captured_at > 0.5:
+            self.status.set("Gesture skipped: camera processing was delayed. Lower your hand and try again.")
             return
         if self.test_session:
             self.click_count += 1
-            self.count_text.set(f"Test gestures: {self.click_count} (no clicks sent)")
+            self.count_text.set(f"Test gestures: {self.click_count} (no actions sent)")
             self.status.set("Thumbs-up detected. Lower your hand before testing again.")
         elif self.controller is not None:
-            clicked, explanation = self.controller.try_click()
+            if self.session_action == ACTION_NEXT_SLIDE:
+                clicked, explanation = self.controller.try_next_slide()
+            else:
+                clicked, explanation = self.controller.try_click()
             self.status.set(explanation)
             if clicked:
                 self.click_count += 1
-                self.count_text.set(f"Clicks sent: {self.click_count}")
+                label = "Next slide commands sent" if self.session_action == ACTION_NEXT_SLIDE else "Clicks sent"
+                self.count_text.set(f"{label}: {self.click_count}")
 
     def poll(self):
         for key, action in ((0x77, self.toggle_pause), (0x78, self.stop)):
@@ -249,7 +274,14 @@ class GestureApp:
                 )
                 self.preview_image = ImageTk.PhotoImage(picture)
                 self.preview.configure(image=self.preview_image, text="")
-                state = "Paused" if self.paused else ("Ready" if armed else "Lower your hand to rearm")
+                if self.paused:
+                    state = "Paused"
+                elif not armed:
+                    state = "Lower your hand to arm/rearm"
+                elif name == "Thumb_Up" and score >= worker.gate.confidence:
+                    state = "Hold thumbs-up steady for 0.35 seconds"
+                else:
+                    state = "Ready for thumbs-up"
                 self.detection.set(f"Gesture: {name.replace('_', ' ')}  |  Confidence: {score:.0%}  |  {state}")
             except Empty:
                 pass

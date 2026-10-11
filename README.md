@@ -3,9 +3,9 @@
 Control your PowerPoint presentation with a thumbs-up.
 
 PowerPoint Gesture Control is a standalone Windows application that uses your
-webcam to recognize hand gestures and turn a deliberate thumbs-up into a left
-mouse click. Choose a presentation from your computer, start its slideshow, and
-control click-triggered animations, slide transitions, or buttons with either hand.
+webcam to recognize hand gestures and turn a deliberate thumbs-up into a next-slide
+command. Choose a presentation from your computer, start its slideshow, and
+advance it with either hand. An optional mouse-click mode controls animations and buttons.
 
 The application combines MediaPipe gesture recognition, OpenCV camera capture,
 and a Tkinter interface. Recognition runs locally on your computer.
@@ -13,10 +13,11 @@ and a Tkinter interface. Recognition runs locally on your computer.
 ## Features
 
 - **Local presentation picker:** choose the PowerPoint file you want to control.
-- **Thumbs-up to click:** send one real left click at the current mouse position.
+- **Thumbs-up to advance:** advance the selected deck directly, regardless of mouse position or which window has focus.
+- **Optional mouse click:** send one real left click at the current mouse position.
 - **Live camera preview:** see hand landmarks, the detected gesture, and its confidence.
 - **Repeat prevention:** hold the gesture without repeatedly clicking; lower your hand to rearm.
-- **Presentation targeting:** clicks are sent only when the selected slideshow is active and the pointer is on it.
+- **Presentation targeting:** next-slide commands target only the selected show; mouse clicks require slideshow focus and the pointer on it.
 - **Keyboard controls:** pause/resume with F8 and stop the camera with F9.
 - **Detection-only mode:** test recognition without opening PowerPoint or sending clicks.
 - **Camera and confidence settings:** select your webcam and adjust the recognition threshold.
@@ -57,19 +58,23 @@ Supported presentation formats: `.pptx`, `.ppsx`, `.ppt`, `.pps`, `.pptm`, and `
 2. Select your camera. Camera `0` is the default; try `1` or `2` if needed.
 3. Click **Start slideshow & camera**. The selected deck opens in PowerPoint. An
    existing slideshow for that presentation is reused when available.
-4. Keep the selected slideshow in the foreground and put the mouse pointer on
-   the slide. Use blank space for normal presentation advancement, or position
-   the pointer over a button or hyperlink to click it.
+4. Leave **Thumbs-up action** set to **Next slide** (the default). You can keep
+   the controller preview or PowerPoint Presenter View focused. Mouse position does not matter.
 5. Lower your hand for at least **0.30 seconds** to arm recognition.
-6. Hold a clear thumbs-up for at least **0.35 seconds**. One left click is sent.
+6. Hold a clear thumbs-up for at least **0.35 seconds**. One next-slide command is sent.
 7. Lower your hand again before making the next thumbs-up.
 
-Holding a thumbs-up continuously produces one click. A minimum **one-second
+Holding a thumbs-up continuously produces one action. A minimum **one-second
 interval** also separates accepted gestures. Either hand can be used.
 
-The application keeps the pointer in place. A gesture produces the same action
-as a left mouse click at that position, so the result depends on the slide's
-animations, transitions, and interactive elements.
+Next slide uses PowerPoint's `SlideShowView.Next` command to display the following
+slide. On the final slide it may end the slideshow (or restart it in kiosk mode).
+It does not click buttons or step through click-triggered animations.
+
+For animations or slide buttons, stop the camera and choose **Mouse click**.
+Keep the selected slideshow in the foreground and the pointer on its slide.
+The app keeps the pointer in place and sends a normal left click, so the result
+depends on the slide's animations, transitions, and interactive elements.
 
 ## Controls
 
@@ -77,21 +82,24 @@ animations, transitions, and interactive elements.
 | --- | --- |
 | **Browse...** | Choose a local presentation file. |
 | **Start slideshow & camera** | Start recognition and open the selected slideshow. |
-| **F8 / Pause clicks** | Pause or resume gesture actions. |
+| **Thumbs-up action** | Choose Next slide (default) or Mouse click before starting. |
+| **F8 / Pause actions** | Pause or resume gesture actions. |
 | **F9 / Stop** | Stop recognition and release the camera. |
-| **Detection only (no clicks)** | Test recognition without sending mouse input. |
+| **Detection only (no actions)** | Test recognition without controlling PowerPoint. |
 | **Camera** | Select the webcam by its device number. |
 | **Confidence** | Set the minimum thumbs-up confidence; default `0.75`, allowed range `0.50`–`0.99`. |
 
 F8 and F9 work while PowerPoint has focus. After resuming, lower your hand before
 making another gesture. Stopping the controller leaves your presentation open.
 
-Gestures are skipped when another application has focus or the pointer is outside
-the selected slideshow. Skipped gestures are not replayed when you return.
+In Mouse click mode, gestures are skipped when another application has focus or
+the pointer is outside the selected slideshow. Next slide mode can advance the
+selected show while another window has focus. Pause with F8 when you want to work
+in another app without advancing the presentation. Skipped gestures are never replayed.
 
 ## Test recognition first
 
-Enable **Detection only (no clicks)** before starting. A presentation file is
+Enable **Detection only (no actions)** before starting. A presentation file is
 optional in this mode. The preview shows the detected gesture and the count of
 accepted test gestures.
 
@@ -105,15 +113,16 @@ clear thumbs-up is missed. Stop the camera before changing settings.
 | --- | --- |
 | Python cannot be found | Install 64-bit Python with Tkinter and make sure `python --version` works in PowerShell. |
 | Camera will not open | Close other camera apps, try another camera number, and enable desktop-app camera access in Windows Settings. |
-| A gesture is detected but no click occurs | Activate the selected slideshow and move the pointer onto its slide. Clicking the controller preview gives focus to the controller. |
+| Hand landmarks appear but no action occurs | Landmarks show hand tracking, not an accepted thumbs-up. Check the gesture name/confidence, lower your hand to arm, then hold a thumbs-up for 0.35 seconds. Check that detection-only mode and pause are off. |
+| A thumbs-up is accepted but no slide advances | Choose Next slide before starting and check the status message. In Mouse click mode, focus the slideshow and put the pointer on it; a click may run an animation instead of changing slides. |
 | Recognition is inconsistent | Improve lighting, keep the whole hand in view, and adjust the confidence threshold. |
 | PowerPoint cannot open the file | Confirm PowerPoint desktop is installed and resolve any password or Protected View prompt in PowerPoint. |
 | Windows blocks clicks | Run PowerPoint and the controller at the same permission level; use normal non-administrator mode for both. |
 | The slideshow has ended | Stop the controller, then start again to reopen the slideshow. |
 | Setup fails | Check your internet connection and Python installation, then run the launcher again. |
 
-With multiple monitors, use the actual slideshow window and place the pointer on
-that slide. PowerPoint's presenter-notes window is a separate window.
+With multiple monitors, Next slide works while Presenter View is focused.
+Mouse click mode requires the actual slideshow window and the pointer on that slide.
 
 ## Project structure
 
@@ -123,7 +132,7 @@ that slide. PowerPoint's presenter-notes window is a separate window.
 ├── camera.py                     # Webcam capture and gesture inference worker
 ├── gesture.py                    # Confidence, hold, release, and cooldown logic
 ├── model.py                      # Gesture-model download and local cache
-├── powerpoint.py                 # PowerPoint automation and Windows mouse input
+├── powerpoint.py                 # Next-slide commands and Windows mouse input
 ├── requirements.txt              # Python dependencies
 ├── run.ps1                       # Setup and launch script
 ├── Start Gesture Controller.cmd  # Double-click launcher
@@ -145,7 +154,7 @@ Run the test suite:
 .\.venv\Scripts\python.exe -m unittest discover -s .\tests -v
 ```
 
-The suite contains **16 unit tests** for gesture filtering and presentation
+The suite tests gesture filtering, application action dispatch, and presentation
 targeting, plus **two optional vision tests** using the real recognition model.
 These tests use simulated camera input and mocked mouse operations; they do not
 open your webcam or send desktop clicks.
@@ -172,4 +181,5 @@ stalls reset pending gesture holds.
 - [OpenCV](https://opencv.org/) — webcam capture and image processing.
 - [Tkinter](https://docs.python.org/3/library/tkinter.html) and [Pillow](https://python-pillow.github.io/) — desktop interface and preview rendering.
 - [pywin32](https://github.com/mhammond/pywin32) — access to PowerPoint's COM automation interface.
+- [SlideShowView.Next](https://learn.microsoft.com/en-us/office/vba/api/powerpoint.slideshowview.next) — direct next-slide commands.
 - [Windows SendInput](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput) — left mouse-button events.
